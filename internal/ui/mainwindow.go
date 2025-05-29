@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 
 	"gioui.org/app"
 	"gioui.org/layout"
@@ -23,19 +24,20 @@ import (
 )
 
 type MainWindow struct {
-	window     *app.Window
-	theme      *material.Theme
-	exploits   []domain.Exploit
-	selected   map[string]bool
-	filterTags *map[string]struct{}
-	tagButtons map[string]*widget.Clickable
-	checkboxes map[string]*widget.Bool
-	startBtn   widget.Clickable
-	client     *metasploit.Client
-
-	isRunning bool
-	progress  float32
-	total     float32
+	window          *app.Window
+	theme           *material.Theme
+	exploits        []domain.Exploit
+	selected        map[string]bool
+	filterTags      *map[string]struct{}
+	tagButtons      map[string]*widget.Clickable
+	checkboxes      map[string]*widget.Bool
+	startBtn        widget.Clickable
+	client          *metasploit.Client
+	isLoading       bool
+	isRunning       bool
+	progress        float32
+	total           float32
+	progressCounter float32
 
 	addFileBtn    widget.Clickable
 	addFileWindow *components.AddFileWindow
@@ -121,6 +123,9 @@ func (mw *MainWindow) layoutUI(gtx layout.Context) layout.Dimensions {
 }
 
 func (mw *MainWindow) layoutMainContent(gtx layout.Context) layout.Dimensions {
+	if mw.isLoading {
+		return mw.layoutProgressBar(gtx)
+	}
 	return layout.Flex{
 		Axis: layout.Vertical,
 	}.Layout(gtx,
@@ -267,7 +272,6 @@ func (mw *MainWindow) openSetWindow(exp domain.Exploit) {
 		mw.setWindow = nil
 	})
 
-	// ⚠️ Без go!
 	if err := mw.setWindow.Run(); err != nil {
 		log.Println("SetWindow error:", err)
 	}
@@ -352,16 +356,39 @@ func (mw *MainWindow) openAddFileWindow() {
 		return
 	}
 
+	mw.isLoading = false
 	mw.addFileWindow = components.NewAddFileWindow(mw.theme,
 		func(file domain.ExploitFile) {
 			writer, err := appFile.NewExploitWriter()
 			if err != nil {
 				log.Print(err)
 			}
-			err = writer.AddExploit(file.Subdir+"/"+file.Name, file.Content)
-			if err != nil {
-				log.Print(err)
-			}
+			mw.isLoading = true // старт прогресса
+			mw.window.Invalidate()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				err = writer.AddExploit(file.Subdir+"/"+file.Name, file.Content)
+				if err != nil {
+					log.Print(err)
+				}
+				err = mw.client.Reload()
+				if err != nil {
+					log.Print(err)
+				}
+
+				scanner := appFile.Scanner{}
+				exploits, setOfTag, err := scanner.WalkDir()
+				if err != nil {
+					log.Print(err)
+				}
+				mw.UpdateExploits(exploits, setOfTag)
+			}()
+			go func() {
+				<-done
+				mw.isLoading = false
+				mw.window.Invalidate()
+			}()
 		},
 		func() {
 			// onClose
@@ -377,6 +404,46 @@ func (mw *MainWindow) openAddFileWindow() {
 		mw.addFileWindow = nil
 		mw.window.Invalidate() // перерисовать главное окно после закрытия
 	}()
+}
+
+func (mw *MainWindow) layoutProgressBar(gtx layout.Context) layout.Dimensions {
+	// Примитивная анимация — крутилка из точек
+	dots := (int(mw.progressCounter) % 4) + 1
+	txt := "Загрузка" + strings.Repeat(".", dots)
+	label := material.Body1(mw.theme, txt)
+	mw.progressCounter += 0.1
+	mw.window.Invalidate() // для анимации, дергает перерисовку
+
+	return label.Layout(gtx)
+}
+
+func (mw *MainWindow) UpdateExploits(exploits []domain.Exploit, tags *map[string]struct{}) {
+	mw.exploits = exploits
+	mw.filterTags = tags
+	// Обновляем кнопки тегов
+	newTagButtons := make(map[string]*widget.Clickable)
+	for tag := range *tags {
+		if btn, exists := mw.tagButtons[tag]; exists {
+			newTagButtons[tag] = btn
+		} else {
+			newTagButtons[tag] = new(widget.Clickable)
+		}
+	}
+	mw.tagButtons = newTagButtons
+
+	for _, exp := range exploits {
+		if _, exists := mw.checkboxes[exp.Name]; !exists {
+			mw.checkboxes[exp.Name] = new(widget.Bool)
+		}
+		if _, exists := mw.infoButtons[exp.Name]; !exists {
+			mw.infoButtons[exp.Name] = new(widget.Clickable)
+		}
+		if _, exists := mw.setButtons[exp.Name]; !exists {
+			mw.setButtons[exp.Name] = new(widget.Clickable)
+		}
+	}
+
+	mw.window.Invalidate()
 }
 
 func (mw *MainWindow) drawProgressBar(gtx layout.Context, current, total float32) layout.Dimensions {

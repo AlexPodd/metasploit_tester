@@ -108,5 +108,26 @@ func (client *Client) Execute(exploits []domain.Exploit, progressChan chan<- flo
 }
 
 func (client *Client) Reload() error {
+	console, err := client.InstanceMSF.ConsoleCreate()
+	if err != nil {
+		return err
+	}
+	consoleId := console.Id
+	defer client.InstanceMSF.ConsoleDestroy(consoleId)
+	_, err = client.InstanceMSF.ConsoleWrite(consoleId, "reload_all")
+	if err != nil {
+		return err
+	}
+
+	for {
+		time.Sleep(300 * time.Millisecond)
+		res, err := client.InstanceMSF.ConsoleRead(consoleId)
+		if err != nil {
+			return err
+		}
+		if !res.Busy {
+			break
+		}
+	}
 	return nil
 }
