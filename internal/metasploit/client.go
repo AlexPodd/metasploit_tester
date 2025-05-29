@@ -1,7 +1,6 @@
 package metasploit
 
 import (
-	"fmt"
 	"log"
 	"time"
 
@@ -53,8 +52,9 @@ func (client *Client) Execute(exploits []domain.Exploit, progressChan chan<- flo
 		log.Print("Output after 'use': ", res.Data)
 		output += res.Data
 
-		for key, value := range exploit.Params {
-			setCmd := fmt.Sprintf("set %s %s\n", key, value)
+		for _, exploitParam := range exploit.Params {
+			setCmd := "set " + exploitParam.Key + " " + exploitParam.Value
+			log.Print("set command: ", setCmd)
 			_, err = client.InstanceMSF.ConsoleWrite(consoleId, setCmd)
 			if err != nil {
 				return nil, err

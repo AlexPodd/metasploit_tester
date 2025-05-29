@@ -37,7 +37,10 @@ type MainWindow struct {
 	total     float32
 
 	infoButtons map[string]*widget.Clickable
+	setButtons  map[string]*widget.Clickable
 
+	setWindow      *components.SetWindow
+	setWindowOpen  bool
 	infoWindow     *components.InfoWindow
 	infoWindowOpen bool
 }
@@ -51,6 +54,7 @@ func NewMainWindow(exploits []domain.Exploit, tags *map[string]struct{}, client 
 		filterTags:  tags,
 		tagButtons:  make(map[string]*widget.Clickable),
 		infoButtons: make(map[string]*widget.Clickable),
+		setButtons:  make(map[string]*widget.Clickable),
 		checkboxes:  make(map[string]*widget.Bool),
 		client:      client,
 	}
@@ -59,6 +63,7 @@ func NewMainWindow(exploits []domain.Exploit, tags *map[string]struct{}, client 
 	for _, exp := range exploits {
 		mw.checkboxes[exp.Name] = new(widget.Bool)
 		mw.infoButtons[exp.Name] = new(widget.Clickable)
+		mw.setButtons[exp.Name] = new(widget.Clickable)
 		for _, tag := range exp.Tags {
 			if _, exists := mw.tagButtons[tag]; !exists {
 				mw.tagButtons[tag] = new(widget.Clickable)
@@ -98,14 +103,14 @@ func (mw *MainWindow) run() error {
 func (mw *MainWindow) layoutUI(gtx layout.Context) layout.Dimensions {
 	dims := mw.layoutMainContent(gtx)
 
-	if mw.infoWindowOpen {
+	if mw.setWindowOpen && mw.setWindow != nil {
 		macroOp := op.Record(gtx.Ops)
-
 		clip.Rect(image.Rectangle{Max: dims.Size}).Push(gtx.Ops).Pop()
 		paint.Fill(gtx.Ops, color.NRGBA{R: 0, G: 0, B: 0, A: 100})
-
 		call := macroOp.Stop()
 		op.Defer(gtx.Ops, call)
+
+		return mw.setWindow.Layout(gtx)
 	}
 
 	return dims
@@ -203,9 +208,16 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 	}
 
 	for _, exp := range filteredExploits {
-		btn := mw.infoButtons[exp.Name]
-		if btn != nil && btn.Clicked(gtx) && !mw.infoWindowOpen {
+		infoBtn := mw.infoButtons[exp.Name]
+		setBtn := mw.setButtons[exp.Name]
+
+		if infoBtn != nil && infoBtn.Clicked(gtx) && !mw.infoWindowOpen {
 			mw.openInfoWindow(exp)
+			break
+		}
+
+		if setBtn != nil && setBtn.Clicked(gtx) && !mw.setWindowOpen {
+			mw.openSetWindow(exp)
 			break
 		}
 	}
@@ -215,6 +227,7 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 		exp := filteredExploits[i]
 		checkbox := mw.checkboxes[exp.Name]
 		infoBtn := mw.infoButtons[exp.Name]
+		setBtn := mw.setButtons[exp.Name]
 
 		return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
@@ -225,8 +238,29 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 					return material.Button(mw.theme, infoBtn, "ℹ").Layout(gtx)
 				}),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return material.Button(mw.theme, setBtn, "⚙").Layout(gtx)
+				}),
 			)
 		})
+	})
+}
+
+func (mw *MainWindow) openSetWindow(exp domain.Exploit) {
+	mw.setWindowOpen = true
+	mw.setWindow = components.NewSetWindow(mw.theme, exp, func(params []domain.ExploitParam) {
+		for i := range mw.exploits {
+			if mw.exploits[i].Name == exp.Name {
+				mw.exploits[i].Params = params
+				break
+			}
+		}
+		mw.setWindowOpen = false
+		mw.setWindow = nil
+	}, func() {
+		mw.setWindowOpen = false
+		mw.setWindow = nil
 	})
 }
 
