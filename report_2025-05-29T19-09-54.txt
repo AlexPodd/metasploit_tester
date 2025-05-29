@@ -1,0 +1,33 @@
+Испытание прошло успешно: 0/1 эксплойтов могли сработать.
+
+1. Fake Test Module (провал)
+[!] The following modules were loaded with warnings:
+ ______________________________________
+/ it looks like you're trying to run a \
+\ module                               /
+ --------------------------------------
+ \
+  \
+     __
+    /  \
+    |  |
+    @  @
+    |  |
+    || |/
+    || ||
+    |\_/|
+    \___/
+
+
+       =[ metasploit v6.4.55-dev-                         ]
++ -- --=[ 2506 exploits - 1290 auxiliary - 431 post       ]
++ -- --=[ 1607 payloads - 49 encoders - 13 nops           ]
++ -- --=[ 9 evasion                                       ]
+
+Metasploit Documentation: https://docs.metasploit.com/
+
+[*] No payload configured, defaulting to windows/meterpreter/reverse_tcp
+[!] Unknown datastore option: RHOST. Did you mean LHOST?
+RHOST => 127.0.0.1run
+
+

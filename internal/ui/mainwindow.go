@@ -103,14 +103,14 @@ func (mw *MainWindow) run() error {
 func (mw *MainWindow) layoutUI(gtx layout.Context) layout.Dimensions {
 	dims := mw.layoutMainContent(gtx)
 
-	if mw.setWindowOpen && mw.setWindow != nil {
+	if mw.infoWindowOpen || mw.setWindowOpen {
 		macroOp := op.Record(gtx.Ops)
+
 		clip.Rect(image.Rectangle{Max: dims.Size}).Push(gtx.Ops).Pop()
 		paint.Fill(gtx.Ops, color.NRGBA{R: 0, G: 0, B: 0, A: 100})
+
 		call := macroOp.Stop()
 		op.Defer(gtx.Ops, call)
-
-		return mw.setWindow.Layout(gtx)
 	}
 
 	return dims
@@ -240,7 +240,7 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 				}),
 				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
 				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Button(mw.theme, setBtn, "⚙").Layout(gtx)
+					return material.Button(mw.theme, setBtn, "params").Layout(gtx)
 				}),
 			)
 		})
@@ -262,6 +262,11 @@ func (mw *MainWindow) openSetWindow(exp domain.Exploit) {
 		mw.setWindowOpen = false
 		mw.setWindow = nil
 	})
+
+	// ⚠️ Без go!
+	if err := mw.setWindow.Run(); err != nil {
+		log.Println("SetWindow error:", err)
+	}
 }
 
 func (mw *MainWindow) openInfoWindow(exp domain.Exploit) {

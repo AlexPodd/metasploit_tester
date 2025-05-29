@@ -3,7 +3,10 @@ package components
 import (
 	"image/color"
 
+	"gioui.org/app"
+	"gioui.org/io/system"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -17,6 +20,7 @@ type ParamEditor struct {
 }
 
 type SetWindow struct {
+	window   *app.Window
 	exploit  domain.Exploit
 	editors  []*ParamEditor
 	saveBtn  widget.Clickable
@@ -24,10 +28,15 @@ type SetWindow struct {
 	addBtn   widget.Clickable
 	theme    *material.Theme
 	onSave   func(updated []domain.ExploitParam)
-	onClose  func()
+
+	onClose func()
 }
 
 func NewSetWindow(theme *material.Theme, exploit domain.Exploit, onSave func([]domain.ExploitParam), onClose func()) *SetWindow {
+	win := new(app.Window)
+	app.Title("Редактировать параметры")
+	app.Size(unit.Dp(500), unit.Dp(600))
+
 	editors := make([]*ParamEditor, len(exploit.Params))
 	for i, param := range exploit.Params {
 		keyEditor := widget.Editor{SingleLine: true, Submit: true}
@@ -42,6 +51,7 @@ func NewSetWindow(theme *material.Theme, exploit domain.Exploit, onSave func([]d
 	}
 
 	return &SetWindow{
+		window:  win,
 		exploit: exploit,
 		editors: editors,
 		theme:   theme,
@@ -49,7 +59,23 @@ func NewSetWindow(theme *material.Theme, exploit domain.Exploit, onSave func([]d
 		onClose: onClose,
 	}
 }
-func (w *SetWindow) Layout(gtx layout.Context) layout.Dimensions {
+
+func (st *SetWindow) Run() error {
+	var ops op.Ops
+	for {
+
+		switch e := st.window.Event().(type) {
+		case app.DestroyEvent:
+			return e.Err
+		case app.FrameEvent:
+			gtx := app.NewContext(&ops, e)
+			st.layout(gtx)
+			e.Frame(gtx.Ops)
+		}
+	}
+}
+
+func (w *SetWindow) layout(gtx layout.Context) layout.Dimensions {
 	return layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		// Обёртка, имитирующая material.Card
 		border := widget.Border{
@@ -61,10 +87,8 @@ func (w *SetWindow) Layout(gtx layout.Context) layout.Dimensions {
 		return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.Inset{Top: unit.Dp(16), Bottom: unit.Dp(16), Left: unit.Dp(24), Right: unit.Dp(24)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-					// Заголовок
 					layout.Rigid(material.H6(w.theme, "Параметры эксплойта: "+w.exploit.Name).Layout),
 
-					// Список параметров
 					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 						return layout.Flex{Axis: layout.Vertical}.Layout(gtx, func() []layout.FlexChild {
 							children := make([]layout.FlexChild, 0, len(w.editors))
@@ -121,6 +145,8 @@ func (w *SetWindow) Layout(gtx layout.Context) layout.Dimensions {
 											}
 										}
 										w.onSave(params)
+										w.window.Perform(system.ActionClose)
+
 									}
 									return material.Button(w.theme, &w.saveBtn, "💾 Сохранить").Layout(gtx)
 								}),
@@ -128,6 +154,7 @@ func (w *SetWindow) Layout(gtx layout.Context) layout.Dimensions {
 								layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 									if w.closeBtn.Clicked(gtx) {
 										w.onClose()
+										w.window.Perform(system.ActionClose)
 									}
 									return material.Button(w.theme, &w.closeBtn, "Закрыть").Layout(gtx)
 								}),
