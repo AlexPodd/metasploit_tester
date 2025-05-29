@@ -39,12 +39,12 @@ type MainWindow struct {
 	total           float32
 	progressCounter float32
 
-	addFileBtn    widget.Clickable
-	addFileWindow *components.AddFileWindow
-
-	infoButtons map[string]*widget.Clickable
-	setButtons  map[string]*widget.Clickable
-
+	addFileBtn     widget.Clickable
+	addFileWindow  *components.AddFileWindow
+	tagList        *widget.List
+	infoButtons    map[string]*widget.Clickable
+	setButtons     map[string]*widget.Clickable
+	exploitList    *widget.List
 	setWindow      *components.SetWindow
 	setWindowOpen  bool
 	infoWindow     *components.InfoWindow
@@ -126,21 +126,31 @@ func (mw *MainWindow) layoutMainContent(gtx layout.Context) layout.Dimensions {
 	if mw.isLoading {
 		return mw.layoutProgressBar(gtx)
 	}
+
+	// Используем Flex с весом для прокручиваемой области
 	return layout.Flex{
-		Axis: layout.Vertical,
+		Axis:    layout.Vertical,
+		Spacing: layout.SpaceBetween, // Это заставит кнопки оставаться внизу
 	}.Layout(gtx,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+		// Прокручиваемая область (занимает все доступное пространство)
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			if mw.infoWindowOpen {
 				return layout.Dimensions{}
 			}
-			return mw.layoutTagFilters(gtx)
+
+			// Вертикальный список с тегами и эксплойтами
+			return layout.Flex{
+				Axis: layout.Vertical,
+			}.Layout(gtx,
+				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+					return mw.layoutTagFilters(gtx)
+				}),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					return mw.layoutExploits(gtx)
+				}),
+			)
 		}),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if mw.infoWindowOpen {
-				return layout.Dimensions{}
-			}
-			return mw.layoutExploits(gtx)
-		}),
+		// Фиксированные кнопки внизу
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			if mw.infoWindowOpen {
 				return layout.Dimensions{}
@@ -157,44 +167,54 @@ func (mw *MainWindow) layoutTagFilters(gtx layout.Context) layout.Dimensions {
 	}
 	sort.Strings(tags)
 
-	return layout.Flex{
-		Axis: layout.Horizontal,
-	}.Layout(gtx, func() []layout.FlexChild {
-		children := make([]layout.FlexChild, 0, len(tags))
-		for _, tag := range tags {
-			btn := mw.tagButtons[tag]
-			if btn.Clicked(gtx) {
-				if _, exists := (*mw.filterTags)[tag]; exists {
-					delete(*mw.filterTags, tag)
-				} else {
-					(*mw.filterTags)[tag] = struct{}{}
+	return widget.Border{
+		Color: color.NRGBA{R: 200, G: 200, B: 200, A: 255},
+		Width: unit.Dp(1),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			// Инициализация widget.List для горизонтальной прокрутки
+			if mw.tagList == nil {
+				mw.tagList = &widget.List{
+					List: layout.List{
+						Axis: layout.Horizontal,
+					},
 				}
 			}
 
-			children = append(children, layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-				// Выбран ли тег?
-				selected := false
-				if _, exists := (*mw.filterTags)[tag]; exists {
-					selected = true
+			return mw.tagList.Layout(gtx, len(tags), func(gtx layout.Context, i int) layout.Dimensions {
+				tag := tags[i]
+				btn := mw.tagButtons[tag]
+				if btn.Clicked(gtx) {
+					if _, exists := (*mw.filterTags)[tag]; exists {
+						delete(*mw.filterTags, tag)
+					} else {
+						(*mw.filterTags)[tag] = struct{}{}
+					}
 				}
 
-				// Стиль кнопки
-				style := material.Button(mw.theme, btn, tag)
-				if selected {
-					style.Background = color.NRGBA{R: 100, G: 149, B: 237, A: 255} // Cornflower Blue
-					style.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}      // Белый текст
-				} else {
-					style.Background = color.NRGBA{R: 230, G: 230, B: 230, A: 255} // Светло-серый фон
-					style.Color = color.NRGBA{R: 0, G: 0, B: 0, A: 255}            // Чёрный текст
-				}
+				return layout.Inset{
+					Right: unit.Dp(8),
+				}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					selected := false
+					if _, exists := (*mw.filterTags)[tag]; exists {
+						selected = true
+					}
 
-				return style.Layout(gtx)
-			}))
-		}
-		return children
-	}()...)
+					style := material.Button(mw.theme, btn, tag)
+					if selected {
+						style.Background = color.NRGBA{R: 100, G: 149, B: 237, A: 255}
+						style.Color = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
+					} else {
+						style.Background = color.NRGBA{R: 230, G: 230, B: 230, A: 255}
+						style.Color = color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+					}
+
+					return style.Layout(gtx)
+				})
+			})
+		})
+	})
 }
-
 func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 	filteredExploits := make([]domain.Exploit, 0, len(mw.exploits))
 	filtering := len(*mw.filterTags) > 0
@@ -231,28 +251,107 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 		}
 	}
 
-	list := &layout.List{Axis: layout.Vertical}
-	return list.Layout(gtx, len(filteredExploits), func(gtx layout.Context, i int) layout.Dimensions {
-		exp := filteredExploits[i]
-		checkbox := mw.checkboxes[exp.Name]
-		infoBtn := mw.infoButtons[exp.Name]
-		setBtn := mw.setButtons[exp.Name]
+	// Используем widget.List вместо layout.List для правильной прокрутки
+	return widget.Border{
+		Color: color.NRGBA{R: 200, G: 200, B: 200, A: 255},
+		Width: unit.Dp(1),
+	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			// Создаем widget.List если он еще не создан
+			if mw.exploitList == nil {
+				mw.exploitList = &widget.List{
+					List: layout.List{
+						Axis: layout.Vertical,
+					},
+				}
+			}
 
-		return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.CheckBox(mw.theme, checkbox, exp.Name).Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Button(mw.theme, infoBtn, "ℹ").Layout(gtx)
-				}),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
-				layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-					return material.Button(mw.theme, setBtn, "params").Layout(gtx)
-				}),
-			)
+			// Используем widget.List для прокрутки
+			return mw.exploitList.Layout(gtx, len(filteredExploits), func(gtx layout.Context, i int) layout.Dimensions {
+				exp := filteredExploits[i]
+				checkbox := mw.checkboxes[exp.Name]
+				infoBtn := mw.infoButtons[exp.Name]
+				setBtn := mw.setButtons[exp.Name]
+
+				return layout.Inset{Bottom: unit.Dp(8)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+					return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return material.CheckBox(mw.theme, checkbox, exp.Name).Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return material.Button(mw.theme, infoBtn, "ℹ").Layout(gtx)
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(8)}.Layout),
+						layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+							return material.Button(mw.theme, setBtn, "params").Layout(gtx)
+						}),
+					)
+				})
+			})
 		})
+	})
+}
+
+func (mw *MainWindow) layoutStartButton(gtx layout.Context) layout.Dimensions {
+	if mw.isRunning {
+		return mw.drawProgressBar(gtx, mw.progress, mw.total)
+	}
+
+	// Добавляем отступы вокруг кнопок
+	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		// Горизонтальный флекс для двух кнопок
+		return layout.Flex{Axis: layout.Horizontal, Spacing: layout.SpaceBetween}.Layout(gtx,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if mw.startBtn.Clicked(gtx) {
+					log.Println("Running selected exploits:")
+
+					var run []domain.Exploit
+					for name, box := range mw.checkboxes {
+						if box.Value {
+							for _, element := range mw.exploits {
+								if element.Name == name {
+									run = append(run, element)
+								}
+							}
+						}
+					}
+
+					mw.total = float32(len(run))
+					mw.progress = 0
+					mw.isRunning = true
+
+					progressChan := make(chan float32)
+
+					go func() {
+						for p := range progressChan {
+							mw.progress = p
+							mw.window.Invalidate()
+						}
+						mw.isRunning = false
+						mw.window.Invalidate()
+					}()
+
+					go func() {
+						report, err := mw.client.Execute(run, progressChan)
+
+						if err != nil {
+							log.Println("Execution error:", err)
+						} else {
+							reportGenerate.GenerateReport(report)
+						}
+					}()
+				}
+				return material.Button(mw.theme, &mw.startBtn, "Запустить").Layout(gtx)
+			}),
+			layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				if mw.addFileBtn.Clicked(gtx) {
+					mw.openAddFileWindow()
+				}
+				return material.Button(mw.theme, &mw.addFileBtn, "Добавить файл").Layout(gtx)
+			}),
+		)
 	})
 }
 
@@ -289,65 +388,6 @@ func (mw *MainWindow) openInfoWindow(exp domain.Exploit) {
 		mw.infoWindowOpen = false
 		mw.window.Invalidate()
 	}()
-}
-
-func (mw *MainWindow) layoutStartButton(gtx layout.Context) layout.Dimensions {
-	if mw.isRunning {
-		return mw.drawProgressBar(gtx, mw.progress, mw.total)
-	}
-
-	// Горизонтальный флекс для двух кнопок
-	return layout.Flex{Axis: layout.Horizontal, Spacing: layout.SpaceBetween}.Layout(gtx,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if mw.startBtn.Clicked(gtx) {
-				log.Println("Running selected exploits:")
-
-				var run []domain.Exploit
-				for name, box := range mw.checkboxes {
-					if box.Value {
-						for _, element := range mw.exploits {
-							if element.Name == name {
-								run = append(run, element)
-							}
-						}
-					}
-				}
-
-				mw.total = float32(len(run))
-				mw.progress = 0
-				mw.isRunning = true
-
-				progressChan := make(chan float32)
-
-				go func() {
-					for p := range progressChan {
-						mw.progress = p
-						mw.window.Invalidate()
-					}
-					mw.isRunning = false
-					mw.window.Invalidate()
-				}()
-
-				go func() {
-					report, err := mw.client.Execute(run, progressChan)
-
-					if err != nil {
-						log.Println("Execution error:", err)
-					} else {
-						reportGenerate.GenerateReport(report)
-					}
-				}()
-			}
-			return material.Button(mw.theme, &mw.startBtn, "Запустить").Layout(gtx)
-		}),
-		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			if mw.addFileBtn.Clicked(gtx) {
-				mw.openAddFileWindow()
-			}
-			return material.Button(mw.theme, &mw.addFileBtn, "Добавить файл").Layout(gtx)
-		}),
-	)
 }
 
 func (mw *MainWindow) openAddFileWindow() {
