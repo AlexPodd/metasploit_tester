@@ -1,6 +1,6 @@
 {
     "host": "http://127.0.0.1:55553",
     "user": "msf",
-    "password": "podushko",
+    "password": "test",
     "path": "~/.msf4/modules/exploits"
 }

@@ -123,16 +123,14 @@ func (mw *MainWindow) layoutUI(gtx layout.Context) layout.Dimensions {
 }
 
 func (mw *MainWindow) layoutMainContent(gtx layout.Context) layout.Dimensions {
-	if mw.isLoading {
+	if mw.isLoading || mw.isRunning {
 		return mw.layoutProgressBar(gtx)
 	}
 
-	// Используем Flex с весом для прокручиваемой области
 	return layout.Flex{
 		Axis:    layout.Vertical,
-		Spacing: layout.SpaceBetween, // Это заставит кнопки оставаться внизу
+		Spacing: layout.SpaceBetween,
 	}.Layout(gtx,
-		// Прокручиваемая область (занимает все доступное пространство)
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 			if mw.infoWindowOpen {
 				return layout.Dimensions{}
@@ -298,7 +296,6 @@ func (mw *MainWindow) layoutStartButton(gtx layout.Context) layout.Dimensions {
 		return mw.drawProgressBar(gtx, mw.progress, mw.total)
 	}
 
-	// Добавляем отступы вокруг кнопок
 	return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		// Горизонтальный флекс для двух кнопок
 		return layout.Flex{Axis: layout.Horizontal, Spacing: layout.SpaceBetween}.Layout(gtx,
@@ -409,10 +406,6 @@ func (mw *MainWindow) openAddFileWindow() {
 			go func() {
 				defer close(done)
 				err = writer.AddExploit(file.Subdir+"/"+file.Name, file.Content)
-				if err != nil {
-					log.Print(err)
-				}
-				err = mw.client.Reload()
 				if err != nil {
 					log.Print(err)
 				}

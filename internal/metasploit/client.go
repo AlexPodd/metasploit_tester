@@ -36,6 +36,29 @@ func (client *Client) Execute(exploits []domain.Exploit, progressChan chan<- flo
 	consoleId := console.Id
 	defer client.InstanceMSF.ConsoleDestroy(consoleId)
 
+	_, err = client.InstanceMSF.ConsoleWrite(consoleId, "reload_all\n")
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		time.Sleep(300 * time.Millisecond)
+
+		res, err := client.InstanceMSF.ConsoleRead(consoleId)
+		if err != nil {
+			return nil, err
+		}
+
+		// 🔍 Логируем вывод консоли Metasploit
+		if res.Data != "" {
+			log.Print(res.Data)
+		}
+
+		if !res.Busy {
+			break
+		}
+	}
+
 	for i, exploit := range exploits {
 		var output string
 		command := "use " + exploit.Path
@@ -105,29 +128,4 @@ func (client *Client) Execute(exploits []domain.Exploit, progressChan chan<- flo
 
 	close(progressChan)
 	return client.Report, nil
-}
-
-func (client *Client) Reload() error {
-	console, err := client.InstanceMSF.ConsoleCreate()
-	if err != nil {
-		return err
-	}
-	consoleId := console.Id
-	defer client.InstanceMSF.ConsoleDestroy(consoleId)
-	_, err = client.InstanceMSF.ConsoleWrite(consoleId, "reload_all")
-	if err != nil {
-		return err
-	}
-
-	for {
-		time.Sleep(300 * time.Millisecond)
-		res, err := client.InstanceMSF.ConsoleRead(consoleId)
-		if err != nil {
-			return err
-		}
-		if !res.Busy {
-			break
-		}
-	}
-	return nil
 }
