@@ -15,6 +15,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/AlexPodd/metasploit_tester/internal/appFile"
 	"github.com/AlexPodd/metasploit_tester/internal/domain"
 	"github.com/AlexPodd/metasploit_tester/internal/metasploit"
 	"github.com/AlexPodd/metasploit_tester/internal/reportGenerate"
@@ -35,6 +36,9 @@ type MainWindow struct {
 	isRunning bool
 	progress  float32
 	total     float32
+
+	addFileBtn    widget.Clickable
+	addFileWindow *components.AddFileWindow
 
 	infoButtons map[string]*widget.Clickable
 	setButtons  map[string]*widget.Clickable
@@ -288,47 +292,91 @@ func (mw *MainWindow) layoutStartButton(gtx layout.Context) layout.Dimensions {
 		return mw.drawProgressBar(gtx, mw.progress, mw.total)
 	}
 
-	if mw.startBtn.Clicked(gtx) {
-		log.Println("Running selected exploits:")
+	// Горизонтальный флекс для двух кнопок
+	return layout.Flex{Axis: layout.Horizontal, Spacing: layout.SpaceBetween}.Layout(gtx,
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if mw.startBtn.Clicked(gtx) {
+				log.Println("Running selected exploits:")
 
-		var run []domain.Exploit
-		for name, box := range mw.checkboxes {
-			if box.Value {
-				for _, element := range mw.exploits {
-					if element.Name == name {
-						run = append(run, element)
+				var run []domain.Exploit
+				for name, box := range mw.checkboxes {
+					if box.Value {
+						for _, element := range mw.exploits {
+							if element.Name == name {
+								run = append(run, element)
+							}
+						}
 					}
 				}
+
+				mw.total = float32(len(run))
+				mw.progress = 0
+				mw.isRunning = true
+
+				progressChan := make(chan float32)
+
+				go func() {
+					for p := range progressChan {
+						mw.progress = p
+						mw.window.Invalidate()
+					}
+					mw.isRunning = false
+					mw.window.Invalidate()
+				}()
+
+				go func() {
+					report, err := mw.client.Execute(run, progressChan)
+
+					if err != nil {
+						log.Println("Execution error:", err)
+					} else {
+						reportGenerate.GenerateReport(report)
+					}
+				}()
 			}
-		}
-
-		mw.total = float32(len(run))
-		mw.progress = 0
-		mw.isRunning = true
-
-		progressChan := make(chan float32)
-
-		go func() {
-			for p := range progressChan {
-				mw.progress = p
-				mw.window.Invalidate()
+			return material.Button(mw.theme, &mw.startBtn, "Запустить").Layout(gtx)
+		}),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			if mw.addFileBtn.Clicked(gtx) {
+				mw.openAddFileWindow()
 			}
-			mw.isRunning = false
-			mw.window.Invalidate()
-		}()
+			return material.Button(mw.theme, &mw.addFileBtn, "Добавить файл").Layout(gtx)
+		}),
+	)
+}
 
-		go func() {
-			report, err := mw.client.Execute(run, progressChan)
-
-			if err != nil {
-				log.Println("Execution error:", err)
-			} else {
-				reportGenerate.GenerateReport(report)
-			}
-		}()
+func (mw *MainWindow) openAddFileWindow() {
+	if mw.addFileWindow != nil {
+		// Уже открыто окно — не открываем новое
+		return
 	}
 
-	return material.Button(mw.theme, &mw.startBtn, "Запустить").Layout(gtx)
+	mw.addFileWindow = components.NewAddFileWindow(mw.theme,
+		func(file domain.ExploitFile) {
+			writer, err := appFile.NewExploitWriter()
+			if err != nil {
+				log.Print(err)
+			}
+			err = writer.AddExploit(file.Subdir+"/"+file.Name, file.Content)
+			if err != nil {
+				log.Print(err)
+			}
+		},
+		func() {
+			// onClose
+			mw.addFileWindow = nil
+		},
+	)
+
+	func() {
+		err := mw.addFileWindow.Run()
+		if err != nil {
+			log.Println("AddFileWindow error:", err)
+		}
+		mw.addFileWindow = nil
+		mw.window.Invalidate() // перерисовать главное окно после закрытия
+	}()
 }
 
 func (mw *MainWindow) drawProgressBar(gtx layout.Context, current, total float32) layout.Dimensions {

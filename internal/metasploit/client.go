@@ -106,3 +106,7 @@ func (client *Client) Execute(exploits []domain.Exploit, progressChan chan<- flo
 	close(progressChan)
 	return client.Report, nil
 }
+
+func (client *Client) Reload() error {
+	return nil
+}

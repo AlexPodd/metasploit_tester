@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/AlexPodd/metasploit_tester/internal/app"
+	"github.com/AlexPodd/metasploit_tester/internal/appFile"
 	"github.com/AlexPodd/metasploit_tester/internal/metasploit"
 	"github.com/AlexPodd/metasploit_tester/internal/ui"
 )
@@ -29,7 +29,7 @@ func main() {
 	}
 	defer client.InstanceMSF.Logout()
 
-	scanner := app.Scanner{}
+	scanner := appFile.Scanner{}
 	exploits, setOfTag, err := scanner.WalkDir()
 	if err != nil {
 		log.Print(err)

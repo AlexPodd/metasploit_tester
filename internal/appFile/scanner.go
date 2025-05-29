@@ -1,4 +1,4 @@
-package app
+package appFile
 
 import (
 	"os"
@@ -12,6 +12,10 @@ import (
 type Scanner struct {
 	catalogs []string
 	exploits []domain.Exploit
+}
+
+type ExploitWriter struct {
+	BasePath string
 }
 
 func (scanner *Scanner) WalkDir() ([]domain.Exploit, *map[string]struct{}, error) {
@@ -100,4 +104,22 @@ func parseExploit(path string, tags []string, content string) domain.Exploit {
 		Targets:     getArrayField("['\"]Targets['\"]"),
 		Disclosure:  getField("['\"]DisclosureDate['\"]"),
 	}
+}
+
+func NewExploitWriter() (*ExploitWriter, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	basePath := filepath.Join(homeDir, ".msf4", "modules", "exploits")
+	return &ExploitWriter{BasePath: basePath}, nil
+}
+
+func (w *ExploitWriter) AddExploit(relPath, content string) error {
+	fullPath := filepath.Join(w.BasePath, relPath)
+	dir := filepath.Dir(fullPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(fullPath, []byte(content), 0644)
 }
