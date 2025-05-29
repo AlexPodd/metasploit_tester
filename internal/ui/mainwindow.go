@@ -17,41 +17,9 @@ import (
 	"gioui.org/widget/material"
 	"github.com/AlexPodd/metasploit_tester/internal/domain"
 	"github.com/AlexPodd/metasploit_tester/internal/metasploit"
+	"github.com/AlexPodd/metasploit_tester/internal/reportGenerate"
+	"github.com/AlexPodd/metasploit_tester/internal/ui/components"
 )
-
-type InfoWindow struct {
-	window *app.Window
-	theme  *material.Theme
-	exp    domain.Exploit
-}
-
-func NewInfoWindow(exp domain.Exploit) *InfoWindow {
-	return &InfoWindow{
-		window: new(app.Window),
-		theme:  material.NewTheme(),
-		exp:    exp,
-	}
-}
-
-func (iw *InfoWindow) run() error {
-	var ops op.Ops
-	for {
-		switch e := iw.window.Event().(type) {
-		case app.DestroyEvent:
-			return e.Err
-		case app.FrameEvent:
-			gtx := app.NewContext(&ops, e)
-			iw.layout(gtx)
-			e.Frame(gtx.Ops)
-		}
-	}
-}
-
-func (iw *InfoWindow) layout(gtx layout.Context) layout.Dimensions {
-	return layout.Inset{Top: unit.Dp(20), Left: unit.Dp(20), Right: unit.Dp(20)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-		return material.Body1(iw.theme, iw.exp.Name+"\n\n"+iw.exp.Description).Layout(gtx)
-	})
-}
 
 type MainWindow struct {
 	window     *app.Window
@@ -70,7 +38,7 @@ type MainWindow struct {
 
 	infoButtons map[string]*widget.Clickable
 
-	infoWindow     *InfoWindow
+	infoWindow     *components.InfoWindow
 	infoWindowOpen bool
 }
 
@@ -263,11 +231,11 @@ func (mw *MainWindow) layoutExploits(gtx layout.Context) layout.Dimensions {
 }
 
 func (mw *MainWindow) openInfoWindow(exp domain.Exploit) {
-	mw.infoWindow = NewInfoWindow(exp)
+	mw.infoWindow = components.NewInfoWindow(exp)
 	mw.infoWindowOpen = true
 
 	go func() {
-		if err := mw.infoWindow.run(); err != nil {
+		if err := mw.infoWindow.Run(); err != nil {
 			log.Println("InfoWindow error:", err)
 		}
 		mw.infoWindow = nil
@@ -311,8 +279,12 @@ func (mw *MainWindow) layoutStartButton(gtx layout.Context) layout.Dimensions {
 		}()
 
 		go func() {
-			if err := mw.client.Execute(run, progressChan); err != nil {
+			report, err := mw.client.Execute(run, progressChan)
+
+			if err != nil {
 				log.Println("Execution error:", err)
+			} else {
+				reportGenerate.GenerateReport(report)
 			}
 		}()
 	}
