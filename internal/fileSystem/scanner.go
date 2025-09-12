@@ -1,4 +1,4 @@
-package appFile
+package filesystem
 
 import (
 	"os"
@@ -6,11 +6,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/AlexPodd/metasploit_tester/internal/domain"
+	"github.com/AlexPodd/metasploit_tester_console/internal/domain"
 )
 
 type Scanner struct {
-	catalogs []string
 	exploits []domain.Exploit
 }
 
@@ -18,13 +17,12 @@ type ExploitWriter struct {
 	BasePath string
 }
 
-func (scanner *Scanner) WalkDir() ([]domain.Exploit, *map[string]struct{}, error) {
+func (scanner *Scanner) WalkDir() ([]domain.Exploit, error) {
 	var allExploits []domain.Exploit
 
 	homeDir, _ := os.UserHomeDir()
 	modulesBase := filepath.Join(homeDir, ".msf4", "modules")
 	exploitsBase := filepath.Join(modulesBase, "exploits")
-	set := make(map[string]struct{})
 
 	err := filepath.Walk(exploitsBase, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -32,19 +30,13 @@ func (scanner *Scanner) WalkDir() ([]domain.Exploit, *map[string]struct{}, error
 		}
 
 		if info.IsDir() {
-			if _, exists := set[info.Name()]; !exists {
-				set[info.Name()] = struct{}{}
-			}
 			return nil
 		}
-
-		// Получаем путь относительно каталога modules
 		relPath, err := filepath.Rel(modulesBase, path)
 		if err != nil {
 			return err
 		}
 
-		// Теги — относительный путь от exploitsBase, можно оставить как есть
 		rel, err := filepath.Rel(exploitsBase, path)
 		if err != nil {
 			return err
@@ -64,10 +56,10 @@ func (scanner *Scanner) WalkDir() ([]domain.Exploit, *map[string]struct{}, error
 	})
 
 	if err != nil {
-		return nil, &set, err
+		return nil, err
 	}
 
-	return allExploits, &set, nil
+	return allExploits, nil
 }
 
 func parseExploit(path string, tags []string, content string) domain.Exploit {
@@ -95,24 +87,14 @@ func parseExploit(path string, tags []string, content string) domain.Exploit {
 	}
 
 	return domain.Exploit{
-		Path:        path,
-		Tags:        tags,
-		Name:        getField("['\"]Name['\"]"),
-		Description: getField("['\"]Description['\"]"),
-		Authors:     getArrayField("['\"]Author['\"]"),
-		Platform:    getField("['\"]Platform['\"]"),
-		Targets:     getArrayField("['\"]Targets['\"]"),
-		Disclosure:  getField("['\"]DisclosureDate['\"]"),
+		Path:            path,
+		Name:            getField("['\"]Name['\"]"),
+		DescriptionExpl: getField("['\"]Description['\"]"),
+		Authors:         getArrayField("['\"]Author['\"]"),
+		Platform:        getField("['\"]Platform['\"]"),
+		Targets:         getArrayField("['\"]Targets['\"]"),
+		References:      getArrayField("['\"]References['\"]"),
 	}
-}
-
-func NewExploitWriter() (*ExploitWriter, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	basePath := filepath.Join(homeDir, ".msf4", "modules", "exploits")
-	return &ExploitWriter{BasePath: basePath}, nil
 }
 
 func (w *ExploitWriter) AddExploit(relPath, content string) error {
