@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,11 +98,27 @@ func parseExploit(path string, tags []string, content string) domain.Exploit {
 	}
 }
 
-func (w *ExploitWriter) AddExploit(relPath, content string) error {
-	fullPath := filepath.Join(w.BasePath, relPath)
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+func (w *ExploitWriter) AddExploit(srcPath, dstDir string) error {
+	fileName := filepath.Base(srcPath)
+
+	fullPath := filepath.Join(dstDir, fileName)
+
+	if err := os.MkdirAll(dstDir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(fullPath, []byte(content), 0644)
+
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(fullPath)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }

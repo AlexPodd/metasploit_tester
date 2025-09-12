@@ -1,7 +1,12 @@
 package ciinterface
 
 import (
+	"encoding/json"
+	"os"
+
 	"github.com/AlexPodd/metasploit_tester_console/internal/domain"
+	filesystem "github.com/AlexPodd/metasploit_tester_console/internal/fileSystem"
+	"github.com/AlexPodd/metasploit_tester_console/internal/reportGenerate"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -10,11 +15,13 @@ type App struct {
 	currentPage tea.Model
 	history     []tea.Model
 
+	writer     *filesystem.ExploitWriter
 	chosePage  *ChoseExploit
 	homePage   *MainMenu
 	configMenu *ConfigModel
 	addPage    *AddExploitPage
 	metasploit domain.MetaSploitInterface
+	finalPage  *SuccessPage
 }
 
 func NewApp(metasploit domain.MetaSploitInterface) *App {
@@ -24,15 +31,35 @@ func NewApp(metasploit domain.MetaSploitInterface) *App {
 	}
 }
 
-func (a *App) Run() {
+func (a *App) Run(ch chan int) {
+	exploits := a.chosePage.ChosenExploits()
 
-	print(a.chosePage.ChosenExploits())
-	//a.metasploit.Run()
+	data, err := os.ReadFile(a.configMenu.selectedFile)
+	if err != nil {
+		panic(err)
+	}
+	var exploitsConfig []domain.ConfigExploit
+	if err := json.Unmarshal(data, &exploitsConfig); err != nil {
+		panic(err)
+	}
+
+	report, err := a.metasploit.Run(exploits, exploitsConfig, ch)
+	if err != nil {
+		panic(err)
+	}
+
+	pathRep, err := reportGenerate.GenerateReport(report)
+	if err != nil {
+		panic(err)
+	}
+
+	a.finalPage = NewSuccessPage(pathRep)
+	close(ch)
 }
 
 func (a *App) Init() tea.Cmd {
 	a.history = []tea.Model{}
-
+	a.writer = &filesystem.ExploitWriter{}
 	a.homePage = NewMainMenu(a)
 	a.currentPage = a.homePage
 
@@ -55,6 +82,25 @@ func (a *App) Init() tea.Cmd {
 		a.addPage.Init(),
 		a.chosePage.Init(),
 	)
+}
+
+func (a *App) AddNewExploit(srcPath, dstDir string) error {
+	err := a.writer.AddExploit(srcPath, dstDir)
+	if err != nil {
+		return err
+	}
+	exploits, err := a.homePage.scanner.WalkDir()
+	if err != nil {
+		a.currentPage = NewErrorModel(err.Error(), a)
+	}
+
+	items := make([]list.Item, len(exploits))
+	for i := range exploits {
+		items[i] = exploits[i]
+	}
+
+	a.chosePage = NewChoseExploit(exploits, items, a)
+	return err
 }
 
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

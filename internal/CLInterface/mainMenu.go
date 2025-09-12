@@ -64,7 +64,19 @@ func (m *MainMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", " ":
 			switch m.choice {
 			case 0:
-				m.app.Run()
+				if m.app.configMenu.selectedFile == "" {
+					return NewErrorModel("Выберите конфигурацию для эксплоитов", m.app), nil
+				}
+				if len(m.app.chosePage.ChosenExploits()) == 0 {
+					return NewErrorModel("Выберите эксплоиты для запуска", m.app), nil
+				}
+				progressCh := make(chan int, len(m.app.chosePage.ChosenExploits()))
+
+				go func() {
+					m.app.Run(progressCh)
+				}()
+
+				return NewRunProgressModel(len(m.app.chosePage.ChosenExploits()), m.app, progressCh), nil
 			case 1:
 				return m.app.chosePage, nil
 			case 2:
